@@ -15,11 +15,17 @@ package pageparser
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
+	"os/exec"
+	"reflect"
+	"regexp"
 
 	"github.com/gohugoio/hugo/parser/metadecoders"
 	"github.com/pkg/errors"
+	"github.com/spf13/afero"
 )
 
 // Result holds the parse result.
@@ -100,8 +106,67 @@ func ParseMain(r io.Reader, cfg Config) (Result, error) {
 	return parseSection(r, cfg, lexMainSection)
 }
 
+func preProcessContent(b []byte, fileName string) []byte {
+	re := regexp.MustCompile(`(?ms)^<!--\n.*?\n-->$`) // TODO: do in init()
+	tmp := re.Find(b)
+	if tmp == nil {
+		return b
+	}
+	fmt.Fprintf(os.Stderr, "%s: remove comment\n", fileName)
+	b2 := re.ReplaceAll(b, []byte(""))
+
+	// _ = os.MkdirAll(path.Dir("/tmp/hugo/" + fileName), 0700)
+	// fmt.Fprintf(os.Stderr, "%s: write to /tmp/hugo/%s.{1,2}\n", fileName, fileName)
+	// _ = ioutil.WriteFile(fmt.Sprintf("/tmp/hugo/%s.1", fileName), b, 0600)
+	// _ = ioutil.WriteFile(fmt.Sprintf("/tmp/hugo/%s.2", fileName), b2, 0600)
+
+	return b2
+}
+
+func preProcessContentExec(b []byte, fileName string) []byte {
+	cmd := exec.Command("hugo-pp", "--")
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		panic(err)
+	}
+	defer stdin.Close()
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		panic(err)
+	}
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		panic(err)
+	}
+	defer stdout.Close()
+
+	if _, err := stdin.Write(b); err != nil {
+		panic(err)
+	}
+	stdin.Close()
+	var b2 []byte
+	if b2, err = ioutil.ReadAll(stdout); err != nil {
+		panic(err)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		panic(err)
+	}
+
+	return b2
+}
+
 func parseSection(r io.Reader, cfg Config, start stateFunc) (Result, error) {
 	b, err := ioutil.ReadAll(r)
+
+	fileName := func() string {
+		v := reflect.ValueOf(r).Elem()
+		file := v.FieldByName("File").Interface().(afero.File)
+		return file.Name()
+	}()
+	b = preProcessContent(b, fileName)
+	b = preProcessContentExec(b, fileName)
+
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read page content")
 	}
