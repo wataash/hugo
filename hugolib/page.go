@@ -726,6 +726,7 @@ func (p *pageState) mapContent(bucket *pagesMapBucket, meta *pageMeta) error {
 	var ordinal int
 	var frontMatterSet bool
 
+	// using parseResult
 Loop:
 	for {
 		it := iter.Next()

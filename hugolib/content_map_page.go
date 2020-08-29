@@ -135,12 +135,14 @@ func (m *pageMap) newPageFromContentNode(n *contentNode, parentBucket *pagesMapB
 	}
 	ps.gitInfo = gi
 
+	// open file
 	r, err := content()
 	if err != nil {
 		return nil, err
 	}
 	defer r.Close()
 
+	// parser
 	parseResult, err := pageparser.Parse(
 		r,
 		pageparser.Config{EnableEmoji: s.siteCfg.enableEmoji},
